@@ -25,8 +25,8 @@ from api import ec2_rsync_download_command
 __all__ = [
         'ec2_add_tag', 'ec2_set_tag', 'ec2_remove_tag',
         'ec2_launch_instance', 'ec2_start_instance', 'ec2_stop_instance',
-        'ec2_list_instances', 'ec2_print_instance', 'ec2_login',
-        'ec2_rsync_download_dir', 'ec2_rsync_upload_dir'
+        'ec2_list_instances', 'ec2_print_instance', 'ec2_login', 'ec2_tunnel',
+        'ec2_rsync_download_dir', 'ec2_rsync_upload_dir', 'ec2_mount'
         ]
 
 
@@ -228,4 +228,50 @@ def ec2_login():
     key_filename = instancewrapper.get_ssh_key_filename()
     extra_ssh_args = awsfab_settings.EXTRA_SSH_ARGS
     cmd = 'ssh -i {key_filename} {extra_ssh_args} {host}'.format(**vars())
+    local(cmd)
+
+@task
+def ec2_tunnel(tunnel):
+    """
+    Create a ssh tunnel for into the host specified by --hosts, --ec2names or --ec2ids.
+
+    Aborts if more than one host is specified.
+
+    input tunnel is something passed to ssh "-L" parameter, e.g. "5432:localhost:5432"
+    Or, if it is an integer port, e.q to '<port>:localhost:<port>'
+    """
+    if len(env.all_hosts) != 1:
+        abort('ec2_tunnel only works with exactly one host. Given hosts: {0}'.format(repr(env.all_hosts)))
+    instancewrapper = Ec2InstanceWrapper.get_from_host_string()
+    host = instancewrapper.get_ssh_uri()
+    key_filename = instancewrapper.get_ssh_key_filename()
+    extra_ssh_args = awsfab_settings.EXTRA_SSH_ARGS
+    cmd = 'ssh -i {key_filename} {extra_ssh_args} {host}'.format(**vars())
+    try:
+        int(tunnel)
+        tunnel = '{}:localhost:{}'.format(tunnel, tunnel)
+    except ValueError:
+        pass
+    cmd += ' -N -L ' + tunnel
+    local(cmd)
+
+@task
+def ec2_mount(remote_path='', local_path='~/mnt/sshfs/tmp', as_user=None):
+    """
+    Mount remote folder for the host specified by --hosts, --ec2names or --ec2ids.
+
+    Aborts if more than one host is specified.
+    """
+    if len(env.all_hosts) != 1:
+        abort('ec2_tunnel only works with exactly one host. Given hosts: {0}'.format(repr(env.all_hosts)))
+    instancewrapper = Ec2InstanceWrapper.get_from_host_string()
+    host = instancewrapper.get_ssh_uri()
+    key_filename = instancewrapper.get_ssh_key_filename()
+    extra_ssh_args = awsfab_settings.EXTRA_SSH_ARGS
+    cmd = 'sshfs {host}:{remote_path} {local_path} -o IdentityFile={key_filename} {extra_ssh_args}'
+    d = vars()
+    d.update({'remote_path': remote_path, 'local_path': local_path})
+    cmd = cmd.format(**d)
+    if as_user:
+        cmd += ' -o sftp_server="sudo -u {} /usr/lib/sftp-server"'.format(as_user)
     local(cmd)
