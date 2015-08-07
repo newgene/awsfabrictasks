@@ -210,7 +210,7 @@ class Ec2InstanceWrapper(object):
         :return: "<instance.tags['awsfab-ssh-user']>@<instance.public_dns_name>"
         """
         user = self['tags'].get('awsfab-ssh-user', awsfab_settings.EC2_INSTANCE_DEFAULT_SSHUSER)
-        host = self['public_dns_name']
+        host = self['public_dns_name'] or self['ip_address']
         return '{user}@{host}'.format(**vars())
 
     def get_ssh_key_filename(self):
